@@ -20,8 +20,8 @@ pub mod inner {
     static CONNECTION_POOL: OnceCell<Pool<RedisClusterConnectionManager>> = OnceCell::new();
 
     pub struct Setting {
-        hosts: Vec<&'static str>,
-        max_connections: u32
+        pub hosts: Vec<&'static str>,
+        pub max_connections: u32
     }
 
     #[tracing::instrument(name = "redis::set_with_expire_seconds", skip_all)]
