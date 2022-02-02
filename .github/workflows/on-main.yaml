@@ -1,0 +1,143 @@
+name: push-main
+on:
+  push:
+    branches:
+      - main
+jobs:
+  test:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 1
+
+      - name: Install latest nightly
+        uses: actions-rs/toolchain@v1
+        with:
+            toolchain: nightly
+            override: true
+      
+      - uses: Swatinem/rust-cache@v1
+
+      - name: Install grcov
+        run: |
+          wget https://github.com/mozilla/grcov/releases/download/v0.8.2/grcov-linux-x86_64.tar.bz2
+          tar -xf grcov-linux-x86_64.tar.bz2
+          mv grcov $HOME/.cargo/bin
+          
+      - name: Install llvm-tools
+        run: rustup component add llvm-tools-preview
+          
+      - name: Run test with code coverage
+        run: cargo test
+        env:
+          RUSTFLAGS: -Zinstrument-coverage
+          LLVM_PROFILE_FILE: test-%p-%m.profraw
+          APP_ENVIRONMENT: test
+          
+      - name: Export lcov.info with grcov
+        run: grcov . --binary-path ./target/debug/ -s . -t lcov --branch --ignore-not-existing --ignore "/*" -o lcov.info
+
+      - name: Upload to codecov.io
+        uses: codecov/codecov-action@v2
+        with:
+          fail_ci_if_error: false
+
+  audit:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 1
+  
+      - uses: Swatinem/rust-cache@v1
+
+      - name: Audit security vulnerabilities
+        run: |
+          cargo install cargo-audit
+          cargo audit --ignore RUSTSEC-2020-0048 --ignore RUSTSEC-2018-0019 --ignore RUSTSEC-2021-0072 --ignore RUSTSEC-2020-0159 --ignore RUSTSEC-2020-0071
+  lint:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 1
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v1
+
+      - name: Run cargo clippy
+        run: cargo clippy -- -D warnings
+
+  check-if-skip-crate-releases:
+    runs-on: ubuntu-20.04
+    outputs:
+      skip: ${{ steps.check-if-skip-crate-releases.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v2
+        with:
+            fetch-depth: 1
+
+      - name: check-if-skip-crate-releases
+        id: check-if-skip-crate-releases
+        uses: saulmaldonado/skip-workflow@v1
+        with:
+          phrase: '[skip-release]'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  bump-tag-version:
+    needs: [test, audit, lint, check-if-skip-crate-releases]
+    runs-on: ubuntu-20.04
+    outputs:
+      new_tag: ${{ steps.tag_version.outputs.new_tag }}
+      new_version: ${{ steps.tag_version.outputs.new_version }}
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 1
+
+      - name: Bump version and push tag
+        id: tag_version
+        uses: mathieudutour/github-tag-action@v5.5
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Create a GitHub release
+        if: ${{ !needs.check-if-skip-crate-releases.outputs.skip }}
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ steps.tag_version.outputs.new_tag }}
+          name: Release ${{ steps.tag_version.outputs.new_tag }}
+          body: ${{ steps.tag_version.outputs.changelog }}
+
+  crate_io:
+    needs: [test, audit, lint, bump-tag-version, check-if-skip-crate-releases]
+    if: ${{ !needs.check-if-skip-crate-releases.outputs.skip }}
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 1
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      
+      - name: install cargo bump
+        run: cargo install cargo-bump
+
+      - name: cargo login
+        run: cargo login ${{ secrets.CARGO_LOGIN_TOKEN }}
+
+      - name: bump cargo version
+        run: cargo bump ${{ needs.bump-tag-version.outputs.new_version }}
+
+      - name: cargo publish
+        run: cargo publish --allow-dirty
