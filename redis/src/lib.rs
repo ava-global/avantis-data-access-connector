@@ -1,2 +1,2 @@
-pub mod redis;
+pub mod redis_connector;
 pub mod redis_cluster;
