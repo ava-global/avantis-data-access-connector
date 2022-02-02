@@ -20,7 +20,7 @@ pub mod inner {
     static CONNECTION_POOL: OnceCell<Pool<RedisClusterConnectionManager>> = OnceCell::new();
 
     pub struct Setting {
-        hosts: String,
+        hosts: Vec<String>,
         max_connections: u32
     }
 
@@ -58,8 +58,8 @@ pub mod inner {
     }
 
     async fn create_connection_pool(setting: Setting) -> anyhow::Result<Pool<RedisClusterConnectionManager>> {
-        let urls: Vec<&str> = setting.hosts.split(',').collect();
-        let manager = RedisClusterConnectionManager::new(urls)?;
+
+        let manager = RedisClusterConnectionManager::new(setting.hosts)?;
         Ok(bb8::Pool::builder()
             .max_size(setting.max_connections)
             .build(manager)
