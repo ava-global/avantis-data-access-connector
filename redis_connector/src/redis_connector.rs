@@ -20,7 +20,7 @@ pub mod inner {
     static CONNECTION_POOL: OnceCell<Pool<RedisClusterConnectionManager>> = OnceCell::new();
 
     pub struct Setting {
-        hosts: Vec<String>,
+        hosts: Vec<&'static str>,
         max_connections: u32
     }
 
