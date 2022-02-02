@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "redis",
+]
+
+[patch.crates-io]
+redis = { path = "redis" }
