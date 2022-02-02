@@ -1,7 +1,4 @@
 [workspace]
 members = [
-    "redis",
+    "redis_connector",
 ]
-
-[patch.crates-io]
-redis = { path = "redis" }
